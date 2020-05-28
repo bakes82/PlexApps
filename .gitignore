@@ -446,5 +446,5 @@ fabric.properties
 /obj/*
 
 /PlexApps/appsettings.Development.json
-.idea/
-.vs/
+/.idea/*
+/.vs/*
