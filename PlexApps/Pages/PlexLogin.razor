@@ -1,0 +1,19 @@
+﻿@page "/PlexLogin"
+@using global::Plex.Api
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+
+@inject NavigationManager NavigationManager
+@inject IPlexClient PlexClient
+@inject ProtectedLocalStorage ProtectedLocalStore
+
+@functions{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var redirectUrl = NavigationManager.BaseUri + "PlexReturn";
+        var oauthUrl = await PlexClient.CreateOAuthPin(redirectUrl);
+        await ProtectedLocalStore.SetAsync("PlexOauthId", oauthUrl.Id.ToString());
+        NavigationManager.NavigateTo(oauthUrl.Url);
+    }
+
+}

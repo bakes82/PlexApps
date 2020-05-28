@@ -1,0 +1,425 @@
+﻿@page "/library/{Server}/{LibraryKey}"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@using Microsoft.Extensions.Configuration
+@using PlexApps.Data
+@using global::Plex.Api
+@using global::Plex.Api.Models
+@using PlexApps.Dto
+@using TraktNet
+@using TraktNet.Objects.Authentication
+@using TraktNet.Objects.Get.Movies
+@using TraktNet.Objects.Post.Syncs.History
+@using TraktNet.Requests.Parameters
+
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject IPlexClient PlexClient
+@inject NotificationService NotificationService
+@inject IConfiguration Configuration
+
+<h1>Plex Library</h1>
+
+@if (Movies == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else
+{
+    <h2>@Data?.MediaContainer?.Title1</h2>
+    <h3>(@NotMarkedPlex) Not Marked In Plex</h3>
+    <h3>(@NotMarkedTrakt) Not Marked In Trakt</h3>
+    <DxDataGrid Data="@Movies"
+                @ref="@_gridRef"
+                ShowFilterRow="true"
+                ShowPager="true"
+                PageSize="25"
+                AutoCollapseDetailRow="true"
+                SelectionMode="DataGridSelectionMode.None"
+                ShowDetailRow="true"
+                ShowGroupPanel="true">
+        <Columns>
+            <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
+            <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
+            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
+                <DisplayTemplate>
+                    @{
+                        var id = Guid.NewGuid().ToString();
+                        var watched = ((MovieDto) context).PlexHas;
+                        @if (watched)
+                        {
+                            <label class="form-check-label text-success" for="@id">
+                                <span>Yes</span>
+                            </label>
+                        }
+                        else
+                        {
+                            <label class="form-check-label text-danger" for="@id">
+                                <span>No</span>
+                            </label>
+                        }
+
+                    }
+                </DisplayTemplate>
+            </DxDataGridCheckBoxColumn>
+            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
+                <DisplayTemplate>
+                    @{
+                        var id = Guid.NewGuid().ToString();
+                        var watched = ((MovieDto) context).PlexWatched;
+                        @if (watched)
+                        {
+                            <a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
+                        }
+                        else
+                        {
+                            if (!((MovieDto) context).PlexHas)
+                            {
+                                <label class="form-check-label text-danger" for="@id">
+                                    <span>Not In Library</span>
+                                </label>
+                            }
+                            else
+                            {
+                                <a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
+                            }
+                        }
+
+                    }
+                </DisplayTemplate>
+            </DxDataGridCheckBoxColumn>
+            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.TraktWatched)" Caption="Trakt Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
+                <DisplayTemplate>
+                    @{
+                        var id = Guid.NewGuid().ToString();
+                        var watched = ((MovieDto) context).TraktWatched;
+                        var hasImdb = ((MovieDto) context).IMDB.IsNotNullOrEmpty();
+                        @if (watched)
+                        {
+                            if (hasImdb)
+                            {
+                                <a class="form-check-label text-success" @onclick="async () => await TraktWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Trakt</a>
+                            }
+                            else
+                            {
+                                <label class="form-check-label text-success" for="@id">
+                                    <span>Watched In Trakt</span>
+                                </label>
+                            }
+                        }
+                        else
+                        {
+                            if (hasImdb)
+                            {
+                                <a class="form-check-label text-danger" @onclick="async () => await TraktWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Trakt</a>
+                            }
+                            else
+                            {
+                                <label class="form-check-label text-success" for="@id">
+                                    <span>Not Watched In Trakt</span>
+                                </label>
+                            }
+                        }
+                    }
+                </DisplayTemplate>
+            </DxDataGridCheckBoxColumn>
+        </Columns>
+        <DetailRowTemplate>
+            @{
+                var movie = context as MovieDto;
+                <div>
+                    <table cellpadding="5" cellspacing="0" width="100%">
+                        <tbody>
+                        <tr>
+                            <td rowspan="4" style="border: 0px; width: 105px">
+                                @if (movie.Art.IsNotNullOrEmpty())
+                                {
+                                    <img src="@movie.Art" width="76"/>
+                                }
+                                else
+                                {
+                                    <img src="/images/empty_poster.jpg" width="76"/>
+                                }
+                            </td>
+                            <td style="border: 0px; white-space: normal;">
+                                <table width="100%">
+                                    <thead>
+                                    <tr>
+                                        <th style="border: 0px; width: 34%;">
+                                            Duration
+                                        </th>
+                                        <th style="border: 0px; width: 33%;">
+                                            Rating
+                                        </th>
+                                        <th style="border: 0px; width: 33%;">
+                                            IMDB
+                                        </th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tr>
+                                        <td style="border: 0px; width: 34%;">
+                                            @{ var time = TimeSpan.FromSeconds(movie.Duration.ToDouble()); }
+                                            @time.ToString(@"hh\:mm\:ss")
+                                        </td>
+                                        <td style="border: 0px; width: 33%;">
+                                            @movie.Rating
+                                        </td>
+                                        <td style="border: 0px; width: 33%;">
+                                            @movie.IMDB
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="border: 0px; white-space: normal; verical-align:top;" colspan="3">
+                                            @movie.Description
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </DetailRowTemplate>
+    </DxDataGrid>
+}
+
+@functions {
+
+    [Parameter]
+    public string Server { get; set; }
+
+    [Parameter]
+    public string LibraryKey { get; set; }
+
+    private PlexMediaContainer Data { get; set; }
+    private List<MovieDto> Movies { get; set; }
+    private string PlexKey { get; set; }
+    private string ServerUrl { get; set; }
+    private string TraktKey { get; set; }
+    private int NotMarkedPlex { get; set; }
+    private int NotMarkedTrakt { get; set; }
+
+    DxDataGrid<MovieDto> _gridRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        PlexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
+        TraktKey = await ProtectedLocalStore.GetAsync<string>("TraktKey");
+        await GetData();
+    }
+
+    private async Task GetData()
+    {
+        Movies = new List<MovieDto>();
+
+        var servers = await PlexClient.GetResources(PlexKey);
+        ServerUrl = (servers.SingleOrDefault(x => x.ClientIdentifier == Server)?.Connections ??
+                     throw new InvalidOperationException()).FirstOrDefault(y => y.Protocol == "https" && y.Local == "0")
+            ?.Uri;
+        Data = await PlexClient.GetMetadataForLibrary(PlexKey, ServerUrl, LibraryKey);
+
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+        var traktClient = new TraktClient(clientId, clientSecret)
+        {
+            Authorization = TraktAuthorization.CreateWith(TraktKey)
+        };
+
+        var traktWatchedMovies =
+            (await traktClient.Sync.GetWatchedMoviesAsync(new TraktExtendedInfo().SetFull())).ToList();
+        var plexMovies = Data.MediaContainer.Metadata;
+
+        foreach (var traktWatchedMovie in traktWatchedMovies)
+        {
+            var plexHasItem = plexMovies.SingleOrDefault(x =>
+                x.Title == traktWatchedMovie.Title && x.ExternalProvider.ToUpper() == "IMDB" &&
+                x.ExternalProviderId == traktWatchedMovie.Ids.Imdb);
+            if (plexHasItem == null)
+                plexHasItem = plexMovies.SingleOrDefault(x => x.Title == traktWatchedMovie.Title && x.Year == traktWatchedMovie.Year);
+            if (plexHasItem == null)
+                plexHasItem = plexMovies.SingleOrDefault(x =>
+                    x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == traktWatchedMovie.Ids.Imdb);
+
+            var plexWatchedItem = plexMovies.SingleOrDefault(x =>
+                x.Title == traktWatchedMovie.Title && x.ExternalProvider.ToUpper() == "IMDB" &&
+                x.ExternalProviderId == traktWatchedMovie.Ids.Imdb && x.ViewCount > 0);
+            if (plexWatchedItem == null)
+                plexWatchedItem = plexMovies.SingleOrDefault(x =>
+                    x.Title == traktWatchedMovie.Title && x.Year == traktWatchedMovie.Year && x.ViewCount > 0);
+            if (plexWatchedItem == null)
+                plexWatchedItem = plexMovies.SingleOrDefault(x =>
+                    x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == traktWatchedMovie.Ids.Imdb &&
+                    x.ViewCount > 0);
+
+            if (plexHasItem != null)
+            {
+                plexMovies.Remove(plexHasItem);
+            }
+
+            Movies.Add(new MovieDto
+            {
+                Title = traktWatchedMovie.Title,
+                Year = traktWatchedMovie.Year.HasValue ? traktWatchedMovie.Year.Value : 0,
+                TraktHas = true,
+                TraktWatched = true,
+                PlexHas = plexHasItem != null && plexHasItem.Title.IsNotNullOrEmpty(),
+                PlexWatched = plexWatchedItem != null && plexWatchedItem.Title.IsNotNullOrEmpty(),
+                Description = plexHasItem != null ? plexHasItem.Summary : traktWatchedMovie.Movie.Overview,
+                Art = plexHasItem != null ? ServerUrl + plexHasItem.Thumb + "?X-Plex-Token=" + PlexKey : string.Empty,
+                IMDB = traktWatchedMovie.Ids.Imdb,
+                Duration = plexHasItem != null
+                    ? (plexHasItem.Duration / 1000).ToString()
+                    : (traktWatchedMovie.Runtime * 60).ToString(),
+                Rating = plexHasItem != null ? plexHasItem.ContentRating : traktWatchedMovie.Movie.Certification,
+                PlexRatingKey = plexHasItem != null ? plexHasItem.RatingKey : string.Empty
+            });
+        }
+
+        foreach (var plexMovie in plexMovies)
+        {
+            Movies.Add(new MovieDto
+            {
+                Title = plexMovie.Title,
+                Year = plexMovie.Year,
+                TraktHas = false,
+                TraktWatched = false,
+                PlexHas = true,
+                PlexWatched = plexMovie.ViewCount > 0,
+                Description = plexMovie.Summary,
+                Art = ServerUrl + plexMovie.Thumb + "?X-Plex-Token=" + PlexKey,
+                IMDB = plexMovie.ExternalProvider.ToUpper() == "IMDB" ? plexMovie.ExternalProviderId : string.Empty,
+                Duration = (plexMovie.Duration / 1000).ToString(),
+                Rating = plexMovie.ContentRating,
+                PlexRatingKey = plexMovie.RatingKey
+            });
+        }
+
+        UpdateNotMarked();
+
+    //await _gridRef.Refresh();
+    }
+
+    private void UpdateNotMarked()
+    {
+        NotMarkedTrakt = (Movies.Count(x => x.PlexWatched && x.PlexHas) - Movies.Count(x => x.TraktWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (Movies.Count(x => x.PlexWatched && x.PlexHas) - Movies.Count(x => x.TraktWatched && x.PlexHas)).ToInt32();
+        NotMarkedPlex = (Movies.Count(x => x.TraktWatched && x.PlexHas) - Movies.Count(x => x.PlexWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (Movies.Count(x => x.TraktWatched && x.PlexHas) - Movies.Count(x => x.PlexWatched && x.PlexHas)).ToInt32();
+    }
+
+    private async Task PlexWatched(MovieDto movie, bool markWatched = false)
+    {
+        var watched = markWatched ? "watched" : "unwatched";
+
+        try
+        {
+            if (markWatched)
+            {
+                await PlexClient.ScrobbleItem(PlexKey, ServerUrl, movie.PlexRatingKey);
+            }
+            else
+            {
+                await PlexClient.UnScrobbleItem(PlexKey, ServerUrl, movie.PlexRatingKey);
+            }
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Success",
+                Detail = $"An tem with the title of '{movie.Title}' has been marked {watched} successfully in plex!",
+                Duration = 5000
+            });
+
+            Movies.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).PlexWatched = markWatched;
+
+            await _gridRef.Refresh();
+            UpdateNotMarked();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"An tem with the title of '{movie.Title}' had an error {ex.Message}!",
+                Duration = 10000
+            });
+        }
+    }
+
+    private async Task TraktWatched(MovieDto movie, bool markWatched = false)
+    {
+        var watched = markWatched ? "watched" : "unwatched";
+
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+        var traktClient = new TraktClient(clientId, clientSecret)
+        {
+            Authorization = TraktAuthorization.CreateWith(TraktKey)
+        };
+
+        try
+        {
+            if (markWatched)
+            {
+                var traktSyncHistoryPostMovies = new TraktSyncHistoryPostBuilder();
+
+                traktSyncHistoryPostMovies.AddMovie(new TraktMovie
+                {
+                    Title = movie.Title
+                    , Year = movie.Year
+                    , Ids = new TraktMovieIds
+                    {
+                        Imdb = movie.IMDB
+                    }
+                }, DateTime.UtcNow);
+
+                var payload = traktSyncHistoryPostMovies.Build();
+                await traktClient.Sync.AddWatchedHistoryItemsAsync(payload);
+            }
+            else
+            {
+                var traktSyncHistoryPostMovies = new TraktSyncHistoryRemovePostBuilder();
+
+                traktSyncHistoryPostMovies.AddMovie(new TraktMovie
+                {
+                    Title = movie.Title
+                    , Year = movie.Year
+                    , Ids = new TraktMovieIds
+                    {
+                        Imdb = movie.IMDB
+                    }
+                });
+
+                var payload = traktSyncHistoryPostMovies.Build();
+                await traktClient.Sync.RemoveWatchedHistoryItemsAsync(payload);
+            }
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Success",
+                Detail = $"An tem with the title of '{movie.Title}' has been marked {watched} successfully in Trakt!",
+                Duration = 5000
+            });
+
+            Movies.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).TraktWatched = markWatched;
+
+            await _gridRef.Refresh();
+            UpdateNotMarked();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = $"An tem with the title of '{movie.Title}' had an error {ex.Message}!",
+                Duration = 10000
+            });
+        }
+    }
+
+}

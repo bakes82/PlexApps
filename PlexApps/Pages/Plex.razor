@@ -1,0 +1,56 @@
+﻿@page "/plex"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@using global::Plex.Api
+@using global::Plex.Api.Models.Server
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject IPlexClient PlexClient
+
+<h1>Plex</h1>
+
+@if (Servers == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Version</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var server in Servers)
+        {
+            <tr>
+                <td>@server.Name</td>
+                <td>@server.ProductVersion</td>
+                @{
+                    var link = $"/libraries/{server.ClientIdentifier}";
+                }
+                <td>
+                    <NavLink href="@link">Set Server</NavLink>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+
+@code {
+    private List<Resource> Servers { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var plexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
+        var resources = await PlexClient.GetResources(plexKey);
+        Servers = resources.Where(x => x.Product == "Plex Media Server").ToList();
+    }
+
+}

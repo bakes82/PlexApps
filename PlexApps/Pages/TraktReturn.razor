@@ -1,0 +1,39 @@
+﻿@page "/TraktReturn"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Configuration
+@using TraktNet
+
+@inject NavigationManager NavigationManager
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject TraktLoginState TraktLoginState
+@inject IConfiguration Configuration
+
+
+@functions{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var code = string.Empty;
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("code", out var codeOut))
+        {
+            code = codeOut;
+        }
+
+        if (code.IsNotNullOrEmpty())
+        {
+            var traktClient = new TraktClient(clientId, clientSecret);
+            traktClient.Authentication.RedirectUri = NavigationManager.BaseUri + "TraktReturn";
+            var authResp = await traktClient.Authentication.GetAuthorizationAsync(code);
+
+            await ProtectedLocalStore.SetAsync("TraktKey", authResp.Value.AccessToken);
+            TraktLoginState.LoggedIn = true;
+            NavigationManager.NavigateTo("/trakt");
+        }
+    }
+
+}

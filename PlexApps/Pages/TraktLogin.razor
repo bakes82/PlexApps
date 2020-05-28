@@ -1,0 +1,19 @@
+﻿@page "/TraktLogin"
+@using Microsoft.Extensions.Configuration
+
+@inject NavigationManager NavigationManager
+@inject IConfiguration Configuration
+
+
+@functions{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var clientId = Configuration["Trakt:ClientId"];
+        var traktRedirectUrl = NavigationManager.BaseUri + "TraktReturn";
+        var redirectUrl =
+            $"https://trakt.tv/oauth/authorize?client_id={clientId}&redirect_uri={traktRedirectUrl}&response_type=code";
+        NavigationManager.NavigateTo(redirectUrl);
+    }
+
+}

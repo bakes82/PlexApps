@@ -1,0 +1,23 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject TraktLoginState TraktLoginState
+@inject PlexLoginState PlexLoginState
+
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+<SurveyPrompt Title="How is Blazor working for you?"/>
+
+@functions{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var traktKey = await ProtectedLocalStore.GetAsync<string>("TraktKey");
+        var plexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
+        TraktLoginState.LoggedIn = traktKey.IsNotNullOrEmpty();
+        PlexLoginState.LoggedIn = plexKey.IsNotNullOrEmpty();
+    }
+
+}

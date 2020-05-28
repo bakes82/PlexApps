@@ -1,0 +1,64 @@
+﻿@page "/libraries/{Server}"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@using global::Plex.Api
+@using global::Plex.Api.Models
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject IPlexClient PlexClient
+
+<h1>Plex</h1>
+
+@if (Libs == null)
+{
+    <p>
+        <em>Loading...</em>
+    </p>
+}
+else
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var sectionDto in Libs.MediaContainer.Directory)
+        {
+            <tr>
+                <td>@sectionDto.Title</td>
+                <td>@sectionDto.Type</td>
+                @{
+                    var link = $"/library/{Server}/{sectionDto.Key}";
+                }
+                <td>
+                    <NavLink href="@link">Set Library</NavLink>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+
+@code {
+    private PlexMediaContainer Libs { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var plexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
+        var servers = await PlexClient.GetResources(plexKey);
+        var serverUrl = (servers.SingleOrDefault(x => x.ClientIdentifier == Server)?.Connections ?? throw new InvalidOperationException()).FirstOrDefault(y => y.Protocol == "https" && y.Local == "0")?.Uri;
+        Libs = await PlexClient.GetLibraries(plexKey, serverUrl);
+    }
+
+}
+
+@functions {
+
+    [Parameter]
+    public string Server { get; set; }
+
+}

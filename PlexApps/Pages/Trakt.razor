@@ -1,0 +1,118 @@
+﻿@page "/trakt"
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+@using Microsoft.Extensions.Configuration
+@using TraktNet.Objects.Get.Watched
+@using TraktNet.Requests.Parameters
+@using TraktNet
+@using TraktNet.Objects.Authentication
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject IConfiguration Configuration
+
+<h1>Trakt</h1>
+
+<DxTabs @bind-ActiveTabIndex="@ActiveTabIndex">
+    <DxTab Text="Movies"></DxTab>
+    <DxTab Text="Shows"></DxTab>
+</DxTabs>
+<div class="card dxbs-border-top-0 dxbs-border-radius-top-0">
+    <div class="card-body">
+        @switch (ActiveTabIndex)
+        {
+            case 0:
+                <div>
+                    @if (WatchedMovies == null)
+                    {
+                        <p>
+                            <em>Loading...</em>
+                        </p>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead>
+                            <tr>
+                                <th>Movie</th>
+                                <th>Last Watched</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var movie in WatchedMovies.OrderByDescending(x => x.LastWatchedAt))
+                            {
+                                <tr>
+                                    <td>@movie.Movie.Title</td>
+                                    <td>@movie.LastWatchedAt</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+                break;
+            case 1:
+                <div>
+                    @if (WatchedShows == null)
+                    {
+                        <p>
+                            <em>Loading...</em>
+                        </p>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead>
+                            <tr>
+                                <th>Show</th>
+                                <th>Last Watched</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var show in WatchedShows.OrderByDescending(x => x.LastWatchedAt))
+                            {
+                                <tr>
+                                    <td>@show.Title</td>
+                                    <td>@show.LastWatchedAt</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+                break;
+        }
+    </div>
+</div>
+
+
+@code {
+    private List<ITraktWatchedMovie> WatchedMovies { get; set; }
+    private List<ITraktWatchedShow> WatchedShows { get; set; }
+
+    int _activeTabIndex;
+
+    int ActiveTabIndex
+    {
+        get => _activeTabIndex;
+        set
+        {
+            _activeTabIndex = value;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var traktKey = await ProtectedLocalStore.GetAsync<string>("TraktKey");
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+        var traktClient = new TraktClient(clientId, clientSecret)
+        {
+            Authorization = TraktAuthorization.CreateWith(traktKey)
+        };
+
+
+        WatchedMovies = (await traktClient.Sync.GetWatchedMoviesAsync(new TraktExtendedInfo().SetFull())).ToList();
+        WatchedShows = (await traktClient.Sync.GetWatchedShowsAsync(new TraktExtendedInfo().SetFull())).ToList();
+    }
+
+}

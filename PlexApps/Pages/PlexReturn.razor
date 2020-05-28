@@ -1,0 +1,26 @@
+﻿@page "/PlexReturn"
+@using global::Plex.Api
+@using Microsoft.AspNetCore.ProtectedBrowserStorage
+
+@inject NavigationManager NavigationManager
+@inject IPlexClient PlexClient
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject PlexLoginState PlexLoginState
+
+@functions{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var oauthId = await ProtectedLocalStore.GetAsync<string>("PlexOauthId");
+        var oAuthPin = await PlexClient.GetAuthTokenFromOAuthPin(oauthId);
+
+        if (string.IsNullOrEmpty(oAuthPin.AuthToken))
+            throw new Exception("Plex auth failed.");
+
+        await ProtectedLocalStore.DeleteAsync("PlexOauthId");
+        await ProtectedLocalStore.SetAsync("PlexKey", oAuthPin.AuthToken);
+        PlexLoginState.LoggedIn = true;
+        NavigationManager.NavigateTo("/plex");
+    }
+
+}
