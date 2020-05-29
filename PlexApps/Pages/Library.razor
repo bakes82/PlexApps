@@ -1,16 +1,15 @@
 ﻿@page "/library/{Server}/{LibraryKey}"
 @using Microsoft.AspNetCore.ProtectedBrowserStorage
 @using Microsoft.Extensions.Configuration
-@using PlexApps.Data
+@using PlexApps.Dto
 @using global::Plex.Api
 @using global::Plex.Api.Models
-@using PlexApps.Dto
 @using TraktNet
+@using TraktNet.Enums
 @using TraktNet.Objects.Authentication
 @using TraktNet.Objects.Get.Movies
 @using TraktNet.Objects.Post.Syncs.History
 @using TraktNet.Requests.Parameters
-
 
 @inject ProtectedLocalStorage ProtectedLocalStore
 @inject IPlexClient PlexClient
@@ -19,7 +18,7 @@
 
 <h1>Plex Library</h1>
 
-@if (Movies == null)
+@if (!_loadDone)
 {
     <p>
         <em>Loading...</em>
@@ -28,163 +27,307 @@
 else
 {
     <h2>@Data?.MediaContainer?.Title1</h2>
-    <h3>(@NotMarkedPlex) Not Marked In Plex</h3>
-    <h3>(@NotMarkedTrakt) Not Marked In Trakt</h3>
-    <DxDataGrid Data="@Movies"
-                @ref="@_gridRef"
-                ShowFilterRow="true"
-                ShowPager="true"
-                PageSize="25"
-                AutoCollapseDetailRow="true"
-                SelectionMode="DataGridSelectionMode.None"
-                ShowDetailRow="true"
-                ShowGroupPanel="true">
-        <Columns>
-            <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
-            <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
-            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
-                <DisplayTemplate>
-                    @{
-                        var id = Guid.NewGuid().ToString();
-                        var watched = ((MovieDto) context).PlexHas;
-                        @if (watched)
-                        {
-                            <label class="form-check-label text-success" for="@id">
-                                <span>Yes</span>
-                            </label>
-                        }
-                        else
-                        {
-                            <label class="form-check-label text-danger" for="@id">
-                                <span>No</span>
-                            </label>
-                        }
 
-                    }
-                </DisplayTemplate>
-            </DxDataGridCheckBoxColumn>
-            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
-                <DisplayTemplate>
-                    @{
-                        var id = Guid.NewGuid().ToString();
-                        var watched = ((MovieDto) context).PlexWatched;
-                        @if (watched)
-                        {
-                            <a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
-                        }
-                        else
-                        {
-                            if (!((MovieDto) context).PlexHas)
-                            {
-                                <label class="form-check-label text-danger" for="@id">
-                                    <span>Not In Library</span>
-                                </label>
-                            }
-                            else
-                            {
-                                <a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
-                            }
-                        }
 
-                    }
-                </DisplayTemplate>
-            </DxDataGridCheckBoxColumn>
-            <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.TraktWatched)" Caption="Trakt Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
-                <DisplayTemplate>
+    <DxTabs @bind-ActiveTabIndex="@ActiveTabIndex">
+        <DxTab Text="Trakt Watch Compare"></DxTab>
+        <DxTab Text="Trakt List Compare"></DxTab>
+    </DxTabs>
+    <div class="card dxbs-border-top-0 dxbs-border-radius-top-0">
+    <div class="card-body">
+    @switch (ActiveTabIndex)
+    {
+        case 0:
+            <h3>(@NotMarkedPlex) Not Marked In Plex</h3>
+            <h3>(@NotMarkedTrakt) Not Marked In Trakt</h3>
+            <DxDataGrid Data="@MoviesWatchedCompare"
+                        @ref="@_gridRef"
+                        ShowFilterRow="true"
+                        ShowPager="true"
+                        PageSize="25"
+                        AutoCollapseDetailRow="true"
+                        SelectionMode="DataGridSelectionMode.None"
+                        ShowDetailRow="true"
+                        ShowGroupPanel="true">
+                <Columns>
+                    <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
+                    <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
+                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
+                        <DisplayTemplate>
+                            @{
+            var id = Guid.NewGuid().ToString();
+            var watched = ((MovieDto) context).PlexHas;
+            @if (watched)
+            {
+                <label class="form-check-label text-success" for="@id">
+                    <span>Yes</span>
+                </label>
+            }
+            else
+            {
+                <label class="form-check-label text-danger" for="@id">
+                    <span>No</span>
+                </label>
+            }}
+                        </DisplayTemplate>
+                    </DxDataGridCheckBoxColumn>
+                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
+                        <DisplayTemplate>
+                            @{
+            var id = Guid.NewGuid().ToString();
+            var watched = ((MovieDto) context).PlexWatched;
+            @if (watched)
+            {
+                <a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
+            }
+            else
+            {
+                if (!((MovieDto) context).PlexHas)
+                {
+                    <label class="form-check-label text-danger" for="@id">
+                        <span>Not In Library</span>
+                    </label>
+                }
+                else
+                {
+                    <a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
+                }
+            }}
+                        </DisplayTemplate>
+                    </DxDataGridCheckBoxColumn>
+                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.TraktWatched)" Caption="Trakt Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
+                        <DisplayTemplate>
+                            @{
+            var id = Guid.NewGuid().ToString();
+            var watched = ((MovieDto) context).TraktWatched;
+            var hasImdb = ((MovieDto) context).IMDB.IsNotNullOrEmpty();
+            @if (watched)
+            {
+                if (hasImdb)
+                {
+                    <a class="form-check-label text-success" @onclick="async () => await TraktWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Trakt</a>
+                }
+                else
+                {
+                    <label class="form-check-label text-success" for="@id">
+                        <span>Watched In Trakt</span>
+                    </label>
+                }
+            }
+            else
+            {
+                if (hasImdb)
+                {
+                    <a class="form-check-label text-danger" @onclick="async () => await TraktWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Trakt</a>
+                }
+                else
+                {
+                    <label class="form-check-label text-success" for="@id">
+                        <span>Not Watched In Trakt</span>
+                    </label>
+                }
+            }}
+                        </DisplayTemplate>
+                    </DxDataGridCheckBoxColumn>
+                </Columns>
+                <DetailRowTemplate>
                     @{
-                        var id = Guid.NewGuid().ToString();
-                        var watched = ((MovieDto) context).TraktWatched;
-                        var hasImdb = ((MovieDto) context).IMDB.IsNotNullOrEmpty();
-                        @if (watched)
-                        {
-                            if (hasImdb)
+            var movie = context as MovieDto;
+            <div>
+                <table cellpadding="5" cellspacing="0" width="100%">
+                    <tbody>
+                    <tr>
+                        <td rowspan="4" style="border: 0px; width: 105px">
+                            @if (movie.Art.IsNotNullOrEmpty())
                             {
-                                <a class="form-check-label text-success" @onclick="async () => await TraktWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Trakt</a>
+                                <img src="@movie.Art" width="76"/>
                             }
                             else
                             {
-                                <label class="form-check-label text-success" for="@id">
-                                    <span>Watched In Trakt</span>
-                                </label>
+                                <img src="/images/empty_poster.jpg" width="76"/>
                             }
-                        }
-                        else
-                        {
-                            if (hasImdb)
-                            {
-                                <a class="form-check-label text-danger" @onclick="async () => await TraktWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Trakt</a>
-                            }
-                            else
-                            {
-                                <label class="form-check-label text-success" for="@id">
-                                    <span>Not Watched In Trakt</span>
-                                </label>
-                            }
-                        }
-                    }
-                </DisplayTemplate>
-            </DxDataGridCheckBoxColumn>
-        </Columns>
-        <DetailRowTemplate>
-            @{
-                var movie = context as MovieDto;
-                <div>
-                    <table cellpadding="5" cellspacing="0" width="100%">
-                        <tbody>
-                        <tr>
-                            <td rowspan="4" style="border: 0px; width: 105px">
-                                @if (movie.Art.IsNotNullOrEmpty())
-                                {
-                                    <img src="@movie.Art" width="76"/>
+                        </td>
+                        <td style="border: 0px; white-space: normal;">
+                            <table width="100%">
+                                <thead>
+                                <tr>
+                                    <th style="border: 0px; width: 34%;">
+                                        Duration
+                                    </th>
+                                    <th style="border: 0px; width: 33%;">
+                                        Rating
+                                    </th>
+                                    <th style="border: 0px; width: 33%;">
+                                        IMDB
+                                    </th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td style="border: 0px; width: 34%;">
+                                        @{ var time = TimeSpan.FromSeconds(movie.Duration.ToDouble());}
+                                        @time.ToString(@"hh\:mm\:ss")
+                                    </td>
+                                    <td style="border: 0px; width: 33%;">
+                                        @movie.Rating
+                                    </td>
+                                    <td style="border: 0px; width: 33%;">
+                                        @movie.IMDB
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="border: 0px; white-space: normal; verical-align:top;" colspan="3">
+                                        @movie.Description
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>}
+                </DetailRowTemplate>
+            </DxDataGrid>
+            break;
+        case 1:
+            
+                <h3>Trakt User: @TraktListUser</h3><DxTextBox @bind-Text="@TraktListUser"></DxTextBox>
+            <h3>Trakt List: @TraktListName</h3><DxTextBox @bind-Text="@TraktListName"></DxTextBox>
+            <a class="form-check-label text-danger" @onclick="async () => await GetTraktListDataCompareData()" href="javascript:void(0);">
+    <DxButton RenderStyle="@ButtonRenderStyle.Primary" RenderStyleMode="@ButtonRenderStyleMode.Contained" Text="Change List"  />
+    </a>
+            if (MoviesListCompare != null && MoviesListCompare.Any())
+            {
+                <DxDataGrid Data="@MoviesListCompare"
+                            @ref="@_gridRef2"
+                            ShowFilterRow="true"
+                            ShowPager="true"
+                            PageSize="25"
+                            AutoCollapseDetailRow="true"
+                            SelectionMode="DataGridSelectionMode.None"
+                            ShowDetailRow="true"
+                            ShowGroupPanel="true">
+                    <Columns>
+                        <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
+                        <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
+                        <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
+                            <DisplayTemplate>
+                                @{
+                                    var id = Guid.NewGuid().ToString();
+                                    var watched = ((MovieDto) context).PlexHas;
+                                    @if (watched)
+                                    {
+                                        <label class="form-check-label text-success" for="@id">
+                                            <span>Yes</span>
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <label class="form-check-label text-danger" for="@id">
+                                            <span>No</span>
+                                        </label>
+                                    }
                                 }
-                                else
-                                {
-                                    <img src="/images/empty_poster.jpg" width="76"/>
+                            </DisplayTemplate>
+                        </DxDataGridCheckBoxColumn>
+                        <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
+                            <DisplayTemplate>
+                                @{
+                                    var id = Guid.NewGuid().ToString();
+                                    var watched = ((MovieDto) context).PlexWatched;
+                                    @if (watched)
+                                    {
+                                        <label class="form-check-label text-success" for="@id">
+                                            <span>Watched</span>
+                                        </label>
+                                        //<a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
+                                    }
+                                    else
+                                    {
+                                        if (!((MovieDto) context).PlexHas)
+                                        {
+                                            <label class="form-check-label text-danger" for="@id">
+                                                <span>Not In Library</span>
+                                            </label>
+                                        }
+                                        else
+                                        {
+                                            <label class="form-check-label text-danger" for="@id">
+                                                <span>Not Watched</span>
+                                            </label>
+                                            //<a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
+                                        }
+                                    }
                                 }
-                            </td>
-                            <td style="border: 0px; white-space: normal;">
-                                <table width="100%">
-                                    <thead>
-                                    <tr>
-                                        <th style="border: 0px; width: 34%;">
-                                            Duration
-                                        </th>
-                                        <th style="border: 0px; width: 33%;">
-                                            Rating
-                                        </th>
-                                        <th style="border: 0px; width: 33%;">
-                                            IMDB
-                                        </th>
-                                    </tr>
-                                    </thead>
+                            </DisplayTemplate>
+                        </DxDataGridCheckBoxColumn>
+                    </Columns>
+                    <DetailRowTemplate>
+                        @{
+                            var movie = context as MovieDto;
+                            <div>
+                                <table cellpadding="5" cellspacing="0" width="100%">
                                     <tbody>
                                     <tr>
-                                        <td style="border: 0px; width: 34%;">
-                                            @{ var time = TimeSpan.FromSeconds(movie.Duration.ToDouble()); }
-                                            @time.ToString(@"hh\:mm\:ss")
+                                        <td rowspan="4" style="border: 0px; width: 105px">
+                                            @if (movie.Art.IsNotNullOrEmpty())
+                                            {
+                                                <img src="@movie.Art" width="76"/>
+                                            }
+                                            else
+                                            {
+                                                <img src="/images/empty_poster.jpg" width="76"/>
+                                            }
                                         </td>
-                                        <td style="border: 0px; width: 33%;">
-                                            @movie.Rating
-                                        </td>
-                                        <td style="border: 0px; width: 33%;">
-                                            @movie.IMDB
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style="border: 0px; white-space: normal; verical-align:top;" colspan="3">
-                                            @movie.Description
+                                        <td style="border: 0px; white-space: normal;">
+                                            <table width="100%">
+                                                <thead>
+                                                <tr>
+                                                    <th style="border: 0px; width: 34%;">
+                                                        Duration
+                                                    </th>
+                                                    <th style="border: 0px; width: 33%;">
+                                                        Rating
+                                                    </th>
+                                                    <th style="border: 0px; width: 33%;">
+                                                        IMDB
+                                                    </th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                <tr>
+                                                    <td style="border: 0px; width: 34%;">
+                                                        @{ var time = TimeSpan.FromSeconds(movie.Duration.ToDouble()); }
+                                                        @time.ToString(@"hh\:mm\:ss")
+                                                    </td>
+                                                    <td style="border: 0px; width: 33%;">
+                                                        @movie.Rating
+                                                    </td>
+                                                    <td style="border: 0px; width: 33%;">
+                                                        @movie.IMDB
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="border: 0px; white-space: normal; verical-align:top;" colspan="3">
+                                                        @movie.Description
+                                                    </td>
+                                                </tr>
+                                                </tbody>
+                                            </table>
                                         </td>
                                     </tr>
                                     </tbody>
                                 </table>
-                            </td>
-                        </tr>
-                        </tbody>
-                    </table>
-                </div>
+                            </div>
+                        }
+                    </DetailRowTemplate>
+                </DxDataGrid>
             }
-        </DetailRowTemplate>
-    </DxDataGrid>
+            break;
+    }
+    </div>
+    </div>
 }
 
 @functions {
@@ -196,25 +339,97 @@ else
     public string LibraryKey { get; set; }
 
     private PlexMediaContainer Data { get; set; }
-    private List<MovieDto> Movies { get; set; }
+    private List<MovieDto> MoviesWatchedCompare { get; set; }
+    private List<MovieDto> MoviesListCompare { get; set; }
     private string PlexKey { get; set; }
     private string ServerUrl { get; set; }
     private string TraktKey { get; set; }
     private int NotMarkedPlex { get; set; }
     private int NotMarkedTrakt { get; set; }
+    private string TraktListUser { get; set; }
+    private string TraktListName { get; set; }
 
     DxDataGrid<MovieDto> _gridRef;
+    DxDataGrid<MovieDto> _gridRef2;
+    private bool _loadDone;
+
+    int _activeTabIndex;
+
+    int ActiveTabIndex
+    {
+        get => _activeTabIndex;
+        set
+        {
+            _activeTabIndex = value;
+            InvokeAsync(StateHasChanged);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         PlexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
         TraktKey = await ProtectedLocalStore.GetAsync<string>("TraktKey");
-        await GetData();
+        await GetMoviesWatchedCompareData();
+        //await GetTraktListDataCompareData();
+        _loadDone = true;
     }
 
-    private async Task GetData()
+    private async Task GetTraktListDataCompareData()
     {
-        Movies = new List<MovieDto>();
+        if (TraktListName.IsNullOrEmpty() || TraktListUser.IsNullOrEmpty())
+        {
+            MoviesListCompare = null;
+            
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = "Username or List Is Empty!",
+                Duration = 10000
+            });
+        }
+        
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+        var traktClient = new TraktClient(clientId, clientSecret)
+        {
+            Authorization = TraktAuthorization.CreateWith(TraktKey)
+        };
+
+        var items = await traktClient.Users.GetCustomListItemsAsync(TraktListUser, TraktListName);
+
+        MoviesListCompare = new List<MovieDto>();
+        var plexMovies = Data.MediaContainer.Metadata;
+
+        foreach (var traktListItem in items.Value)
+        {
+            if (traktListItem.Type == TraktListItemType.Movie)
+            {
+                var plexHas = PlexHasItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
+                var plexWatched = PlexWatchedItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
+                MoviesListCompare.Add(new MovieDto
+                {
+                    Title = traktListItem.Movie.Title,
+                    Description = plexHas != null ? plexHas.Summary : traktListItem.Movie.Overview,
+                    TraktHas = true,
+                    Year = traktListItem.Movie.Year,
+                    IMDB = traktListItem.Movie.Ids.Imdb,
+                    PlexHas = plexHas != null,
+                    PlexWatched = plexWatched != null,
+                    Duration = plexHas != null
+                        ? (plexHas.Duration / 1000).ToString()
+                        : (traktListItem.Movie.Runtime ?? 0 * 60).ToString(),
+                    Rating = plexHas != null ? plexHas.ContentRating : traktListItem.Movie.Certification,
+                    PlexRatingKey = plexHas != null ? plexHas.RatingKey : string.Empty,
+                    Art = plexHas != null ? ServerUrl + plexHas.Thumb + "?X-Plex-Token=" + PlexKey : string.Empty,
+                });
+            }
+        }
+    }
+
+    private async Task GetMoviesWatchedCompareData()
+    {
+        MoviesWatchedCompare = new List<MovieDto>();
 
         var servers = await PlexClient.GetResources(PlexKey);
         ServerUrl = (servers.SingleOrDefault(x => x.ClientIdentifier == Server)?.Connections ??
@@ -235,32 +450,15 @@ else
 
         foreach (var traktWatchedMovie in traktWatchedMovies)
         {
-            var plexHasItem = plexMovies.SingleOrDefault(x =>
-                x.Title == traktWatchedMovie.Title && x.ExternalProvider.ToUpper() == "IMDB" &&
-                x.ExternalProviderId == traktWatchedMovie.Ids.Imdb);
-            if (plexHasItem == null)
-                plexHasItem = plexMovies.SingleOrDefault(x => x.Title == traktWatchedMovie.Title && x.Year == traktWatchedMovie.Year);
-            if (plexHasItem == null)
-                plexHasItem = plexMovies.SingleOrDefault(x =>
-                    x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == traktWatchedMovie.Ids.Imdb);
-
-            var plexWatchedItem = plexMovies.SingleOrDefault(x =>
-                x.Title == traktWatchedMovie.Title && x.ExternalProvider.ToUpper() == "IMDB" &&
-                x.ExternalProviderId == traktWatchedMovie.Ids.Imdb && x.ViewCount > 0);
-            if (plexWatchedItem == null)
-                plexWatchedItem = plexMovies.SingleOrDefault(x =>
-                    x.Title == traktWatchedMovie.Title && x.Year == traktWatchedMovie.Year && x.ViewCount > 0);
-            if (plexWatchedItem == null)
-                plexWatchedItem = plexMovies.SingleOrDefault(x =>
-                    x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == traktWatchedMovie.Ids.Imdb &&
-                    x.ViewCount > 0);
+            var plexHasItem = PlexHasItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
+            var plexWatchedItem = PlexWatchedItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
 
             if (plexHasItem != null)
             {
                 plexMovies.Remove(plexHasItem);
             }
 
-            Movies.Add(new MovieDto
+            MoviesWatchedCompare.Add(new MovieDto
             {
                 Title = traktWatchedMovie.Title,
                 Year = traktWatchedMovie.Year.HasValue ? traktWatchedMovie.Year.Value : 0,
@@ -273,7 +471,7 @@ else
                 IMDB = traktWatchedMovie.Ids.Imdb,
                 Duration = plexHasItem != null
                     ? (plexHasItem.Duration / 1000).ToString()
-                    : (traktWatchedMovie.Runtime * 60).ToString(),
+                    : (traktWatchedMovie.Runtime ?? 0 * 60).ToString(),
                 Rating = plexHasItem != null ? plexHasItem.ContentRating : traktWatchedMovie.Movie.Certification,
                 PlexRatingKey = plexHasItem != null ? plexHasItem.RatingKey : string.Empty
             });
@@ -281,7 +479,7 @@ else
 
         foreach (var plexMovie in plexMovies)
         {
-            Movies.Add(new MovieDto
+            MoviesWatchedCompare.Add(new MovieDto
             {
                 Title = plexMovie.Title,
                 Year = plexMovie.Year,
@@ -303,10 +501,38 @@ else
     //await _gridRef.Refresh();
     }
 
+    private static Metadata PlexHasItem(List<Metadata> plexMovies, string title, string imdb, int year)
+    {
+        var plexHasItem = plexMovies.SingleOrDefault(x =>
+            x.Title == title && x.ExternalProvider.ToUpper() == "IMDB" &&
+            x.ExternalProviderId == imdb);
+        if (plexHasItem == null)
+            plexHasItem =
+                plexMovies.SingleOrDefault(x => x.Title == title && x.Year == year);
+        if (plexHasItem == null)
+            plexHasItem = plexMovies.SingleOrDefault(x =>
+                x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == imdb);
+        return plexHasItem;
+    }
+
+    private static Metadata PlexWatchedItem(List<Metadata> plexMovies, string title, string imdb, int year)
+    {
+        var plexHasItem = plexMovies.SingleOrDefault(x =>
+            x.Title == title && x.ExternalProvider.ToUpper() == "IMDB" &&
+            x.ExternalProviderId == imdb && x.ViewCount > 0);
+        if (plexHasItem == null)
+            plexHasItem =
+                plexMovies.SingleOrDefault(x => x.Title == title && x.Year == year && x.ViewCount > 0);
+        if (plexHasItem == null)
+            plexHasItem = plexMovies.SingleOrDefault(x =>
+                x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == imdb && x.ViewCount > 0);
+        return plexHasItem;
+    }
+
     private void UpdateNotMarked()
     {
-        NotMarkedTrakt = (Movies.Count(x => x.PlexWatched && x.PlexHas) - Movies.Count(x => x.TraktWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (Movies.Count(x => x.PlexWatched && x.PlexHas) - Movies.Count(x => x.TraktWatched && x.PlexHas)).ToInt32();
-        NotMarkedPlex = (Movies.Count(x => x.TraktWatched && x.PlexHas) - Movies.Count(x => x.PlexWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (Movies.Count(x => x.TraktWatched && x.PlexHas) - Movies.Count(x => x.PlexWatched && x.PlexHas)).ToInt32();
+        NotMarkedTrakt = (MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas)).ToInt32();
+        NotMarkedPlex = (MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas)).ToInt32();
     }
 
     private async Task PlexWatched(MovieDto movie, bool markWatched = false)
@@ -332,7 +558,7 @@ else
                 Duration = 5000
             });
 
-            Movies.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).PlexWatched = markWatched;
+            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).PlexWatched = markWatched;
 
             await _gridRef.Refresh();
             UpdateNotMarked();
@@ -405,7 +631,7 @@ else
                 Duration = 5000
             });
 
-            Movies.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).TraktWatched = markWatched;
+            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).TraktWatched = markWatched;
 
             await _gridRef.Refresh();
             UpdateNotMarked();
