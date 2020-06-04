@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Hosting;
@@ -12,7 +13,7 @@ using Plex.Api;
 using Plex.Api.Api;
 using PlexApps.Areas.Identity;
 using PlexApps.Data;
-using Radzen;
+using Syncfusion.Blazor;
 
 namespace PlexApps
 {
@@ -66,17 +67,18 @@ namespace PlexApps
                 // Make the session cookie essential
                 options.Cookie.IsEssential = true;
             });
-            services.AddDevExpressBlazor();
-            services.AddScoped<NotificationService>();
-            services.AddScoped<DialogService>();
             services.AddProtectedBrowserStorage();
             services.AddSingleton<TraktLoginState>();
             services.AddSingleton<PlexLoginState>();
+            services.AddSyncfusionBlazor();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            var key = "OTU2NUAzMTM4MmUzMTJlMzBjK1dGZ2ZQcjJVQkE0TmRUajdIYzhlSTg3MnZldTgyc3JIdTRFK0NOWTV3PQ==";
+            Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense(key);
+            
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();

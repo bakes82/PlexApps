@@ -1,269 +1,50 @@
 ﻿@page "/library/{Server}/{LibraryKey}"
+@using MoreLinq.Extensions
 @using Microsoft.AspNetCore.ProtectedBrowserStorage
 @using Microsoft.Extensions.Configuration
-@using PlexApps.Dto
 @using global::Plex.Api
 @using global::Plex.Api.Models
+@using PlexApps.Dto
+@using PlexApps.Helpers
+@using TraktNet.Objects.Get.Watched
+@using TraktNet.Objects.Post.Syncs.History
+@using TraktNet.Requests.Parameters
+@using TraktNet.Responses
+@using Syncfusion.Blazor.Notifications
 @using TraktNet
 @using TraktNet.Enums
 @using TraktNet.Objects.Authentication
 @using TraktNet.Objects.Get.Movies
-@using TraktNet.Objects.Post.Syncs.History
-@using TraktNet.Requests.Parameters
+@using TraktNet.Objects.Get.Users.Lists
+@using FilterType = Syncfusion.Blazor.Grids.FilterType
 
 @inject ProtectedLocalStorage ProtectedLocalStore
 @inject IPlexClient PlexClient
-@inject NotificationService NotificationService
 @inject IConfiguration Configuration
+
 
 <h1>Plex Library</h1>
 
-@if (!_loadDone)
-{
-    <p>
-        <em>Loading...</em>
-    </p>
-}
-else
-{
-    <h2>@Data?.MediaContainer?.Title1</h2>
+
+<h2>@PlexLibraryInfo?.MediaContainer?.Title1</h2>
 
 
-    <DxTabs @bind-ActiveTabIndex="@ActiveTabIndex">
-        <DxTab Text="Trakt Watch Compare"></DxTab>
-        <DxTab Text="Trakt List Compare"></DxTab>
-    </DxTabs>
-    <div class="card dxbs-border-top-0 dxbs-border-radius-top-0">
-    <div class="card-body">
-    @switch (ActiveTabIndex)
-    {
-        case 0:
-            <h3>(@NotMarkedPlex) Not Marked In Plex</h3>
-            <h3>(@NotMarkedTrakt) Not Marked In Trakt</h3>
-            <DxDataGrid Data="@MoviesWatchedCompare"
-                        @ref="@_gridRef"
-                        ShowFilterRow="true"
-                        ShowPager="true"
-                        PageSize="25"
-                        AutoCollapseDetailRow="true"
-                        SelectionMode="DataGridSelectionMode.None"
-                        ShowDetailRow="true"
-                        ShowGroupPanel="true">
-                <Columns>
-                    <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
-                    <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
-                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
-                        <DisplayTemplate>
-                            @{
-            var id = Guid.NewGuid().ToString();
-            var watched = ((MovieDto) context).PlexHas;
-            @if (watched)
-            {
-                <label class="form-check-label text-success" for="@id">
-                    <span>Yes</span>
-                </label>
-            }
-            else
-            {
-                <label class="form-check-label text-danger" for="@id">
-                    <span>No</span>
-                </label>
-            }}
-                        </DisplayTemplate>
-                    </DxDataGridCheckBoxColumn>
-                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
-                        <DisplayTemplate>
-                            @{
-            var id = Guid.NewGuid().ToString();
-            var watched = ((MovieDto) context).PlexWatched;
-            @if (watched)
-            {
-                <a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
-            }
-            else
-            {
-                if (!((MovieDto) context).PlexHas)
-                {
-                    <label class="form-check-label text-danger" for="@id">
-                        <span>Not In Library</span>
-                    </label>
-                }
-                else
-                {
-                    <a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
-                }
-            }}
-                        </DisplayTemplate>
-                    </DxDataGridCheckBoxColumn>
-                    <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.TraktWatched)" Caption="Trakt Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
-                        <DisplayTemplate>
-                            @{
-            var id = Guid.NewGuid().ToString();
-            var watched = ((MovieDto) context).TraktWatched;
-            var hasImdb = ((MovieDto) context).IMDB.IsNotNullOrEmpty();
-            @if (watched)
-            {
-                if (hasImdb)
-                {
-                    <a class="form-check-label text-success" @onclick="async () => await TraktWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Trakt</a>
-                }
-                else
-                {
-                    <label class="form-check-label text-success" for="@id">
-                        <span>Watched In Trakt</span>
-                    </label>
-                }
-            }
-            else
-            {
-                if (hasImdb)
-                {
-                    <a class="form-check-label text-danger" @onclick="async () => await TraktWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Trakt</a>
-                }
-                else
-                {
-                    <label class="form-check-label text-success" for="@id">
-                        <span>Not Watched In Trakt</span>
-                    </label>
-                }
-            }}
-                        </DisplayTemplate>
-                    </DxDataGridCheckBoxColumn>
-                </Columns>
-                <DetailRowTemplate>
-                    @{
-            var movie = context as MovieDto;
-            <div>
-                <table cellpadding="5" cellspacing="0" width="100%">
-                    <tbody>
-                    <tr>
-                        <td rowspan="4" style="border: 0px; width: 105px">
-                            @if (movie.Art.IsNotNullOrEmpty())
-                            {
-                                <img src="@movie.Art" width="76"/>
-                            }
-                            else
-                            {
-                                <img src="/images/empty_poster.jpg" width="76"/>
-                            }
-                        </td>
-                        <td style="border: 0px; white-space: normal;">
-                            <table width="100%">
-                                <thead>
-                                <tr>
-                                    <th style="border: 0px; width: 34%;">
-                                        Duration
-                                    </th>
-                                    <th style="border: 0px; width: 33%;">
-                                        Rating
-                                    </th>
-                                    <th style="border: 0px; width: 33%;">
-                                        IMDB
-                                    </th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr>
-                                    <td style="border: 0px; width: 34%;">
-                                        @{ var time = TimeSpan.FromSeconds(movie.Duration.ToDouble());}
-                                        @time.ToString(@"hh\:mm\:ss")
-                                    </td>
-                                    <td style="border: 0px; width: 33%;">
-                                        @movie.Rating
-                                    </td>
-                                    <td style="border: 0px; width: 33%;">
-                                        @movie.IMDB
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="border: 0px; white-space: normal; verical-align:top;" colspan="3">
-                                        @movie.Description
-                                    </td>
-                                </tr>
-                                </tbody>
-                            </table>
-                        </td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>}
-                </DetailRowTemplate>
-            </DxDataGrid>
-            break;
-        case 1:
-            
-                <h3>Trakt User: @TraktListUser</h3><DxTextBox @bind-Text="@TraktListUser"></DxTextBox>
-            <h3>Trakt List: @TraktListName</h3><DxTextBox @bind-Text="@TraktListName"></DxTextBox>
-            <a class="form-check-label text-danger" @onclick="async () => await GetTraktListDataCompareData()" href="javascript:void(0);">
-    <DxButton RenderStyle="@ButtonRenderStyle.Primary" RenderStyleMode="@ButtonRenderStyleMode.Contained" Text="Change List"  />
-    </a>
-            if (MoviesListCompare != null && MoviesListCompare.Any())
-            {
-                <DxDataGrid Data="@MoviesListCompare"
-                            @ref="@_gridRef2"
-                            ShowFilterRow="true"
-                            ShowPager="true"
-                            PageSize="25"
-                            AutoCollapseDetailRow="true"
-                            SelectionMode="DataGridSelectionMode.None"
-                            ShowDetailRow="true"
-                            ShowGroupPanel="true">
-                    <Columns>
-                        <DxDataGridColumn Field="@nameof(MovieDto.Title)" Caption="Title" Width="150px" SortOrder="@DataGridColumnSortOrder.Ascending" SortIndex="0"/>
-                        <DxDataGridSpinEditColumn Field="@nameof(MovieDto.Year)" Caption="Year" TextAlignment="@DataGridTextAlign.Left" Width="50px"/>
-                        <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexHas)" Caption="In Library" Width="100px" FilterTextChecked="Yes" FilterTextUnchecked="No" TextAlignment="DataGridTextAlign.Center">
-                            <DisplayTemplate>
-                                @{
-                                    var id = Guid.NewGuid().ToString();
-                                    var watched = ((MovieDto) context).PlexHas;
-                                    @if (watched)
-                                    {
-                                        <label class="form-check-label text-success" for="@id">
-                                            <span>Yes</span>
-                                        </label>
-                                    }
-                                    else
-                                    {
-                                        <label class="form-check-label text-danger" for="@id">
-                                            <span>No</span>
-                                        </label>
-                                    }
-                                }
-                            </DisplayTemplate>
-                        </DxDataGridCheckBoxColumn>
-                        <DxDataGridCheckBoxColumn Field="@nameof(MovieDto.PlexWatched)" Caption="Plex Watched" Width="100px" FilterTextChecked="Watched" FilterTextUnchecked="Not Watched" TextAlignment="DataGridTextAlign.Center">
-                            <DisplayTemplate>
-                                @{
-                                    var id = Guid.NewGuid().ToString();
-                                    var watched = ((MovieDto) context).PlexWatched;
-                                    @if (watched)
-                                    {
-                                        <label class="form-check-label text-success" for="@id">
-                                            <span>Watched</span>
-                                        </label>
-                                        //<a class="form-check-label text-success" @onclick="async () => await PlexWatched(context as MovieDto)" href="javascript:void(0);">Mark Unwatched in Plex</a>
-                                    }
-                                    else
-                                    {
-                                        if (!((MovieDto) context).PlexHas)
-                                        {
-                                            <label class="form-check-label text-danger" for="@id">
-                                                <span>Not In Library</span>
-                                            </label>
-                                        }
-                                        else
-                                        {
-                                            <label class="form-check-label text-danger" for="@id">
-                                                <span>Not Watched</span>
-                                            </label>
-                                            //<a class="form-check-label text-danger" @onclick="async () => await PlexWatched(context as MovieDto, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
-                                        }
-                                    }
-                                }
-                            </DisplayTemplate>
-                        </DxDataGridCheckBoxColumn>
-                    </Columns>
-                    <DetailRowTemplate>
+<SfTab CssClass="default-tab">
+<TabItems>
+<TabItem>
+    <ChildContent>
+        <TabHeader Text="Trakt Watch Compare"></TabHeader>
+    </ChildContent>
+    <ContentTemplate>
+        <h3>(@NotMarkedPlex) Not Marked In Plex</h3>
+        <h3>(@NotMarkedTrakt) Not Marked In Trakt</h3>
+        @if (MoviesWatchedCompare != null && MoviesWatchedCompare.Any())
+        {
+            <SfGrid DataSource="@MoviesWatchedCompare" AllowSelection="false" AllowSorting="true" AllowFiltering="true" AllowGrouping="true" AllowPaging="true">
+                <GridPageSettings PageSize="25" PageSizes="true"></GridPageSettings>
+                <GridFilterSettings Type="@FilterType.Menu"></GridFilterSettings>
+                <GridTemplates>
+                    <DetailTemplate>
                         @{
                             var movie = context as MovieDto;
                             <div>
@@ -321,14 +102,158 @@ else
                                 </table>
                             </div>
                         }
-                    </DetailRowTemplate>
-                </DxDataGrid>
-            }
-            break;
-    }
-    </div>
-    </div>
-}
+                    </DetailTemplate>
+                </GridTemplates>
+                <GridColumns>
+                    <GridColumn Field=@nameof(MovieDto.Title) HeaderText="Title"></GridColumn>
+                    <GridColumn Field=@nameof(MovieDto.Year) HeaderText="Year"></GridColumn>
+                    <GridColumn Field=@nameof(MovieDto.PlexHas) HeaderText="In Library" Filter="@(new {type = "CheckBox"})" Width="150">
+                        <Template>
+                            @{
+                                if (context is MovieDto movie && movie.PlexHas)
+                                {
+                                    <span class="badge badge-success">Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-danger">No</span>
+                                }
+                            }
+                        </Template>
+                    </GridColumn>
+                    <GridColumn Field=@nameof(MovieDto.PlexWatched) HeaderText="Plex Watched" Filter="@(new {type = "CheckBox"})" Width="200">
+                        <Template>
+                            @{
+                                var movie = context as MovieDto;
+                                var watched = ((MovieDto) context).PlexWatched;
+                            <SfCheckBox Disabled="true" Checked="@watched"></SfCheckBox>
+                                @if (watched)
+                                {
+                                    <a class="form-check-label text-success" @onclick="async () => await PlexWatched(movie.PlexRatingKey, movie.Title)" href="javascript:void(0);">Mark Unwatched in Plex</a>
+                                }
+                                else
+                                {
+                                    if (!((MovieDto) context).PlexHas)
+                                    {
+                                        <label class="form-check-label text-danger">
+                                            <span>Not In Library</span>
+                                        </label>
+                                    }
+                                    else
+                                    {
+                                        <a class="form-check-label text-danger" @onclick="async () => await PlexWatched(movie.PlexRatingKey, movie.Title, true)" href="javascript:void(0);"> Mark Watched in Plex</a>
+                                    }
+                                }
+                            }
+                        </Template>
+                    </GridColumn>
+                    <GridColumn Field=@nameof(MovieDto.TraktWatched) HeaderText="Trakt Watched" Filter="@(new {type = "CheckBox"})" Width="200">
+                        <Template>
+                            @{
+                                var watched = ((MovieDto) context).TraktWatched;
+                                var hasImdb = ((MovieDto) context).IMDB.IsNotNullOrEmpty();
+                                var movie = context as MovieDto;
+                            <SfCheckBox Disabled="true" Checked="@watched"></SfCheckBox>
+                                @if (watched)
+                                {
+                                    if (hasImdb)
+                                    {
+                                        <a class="form-check-label text-success" @onclick="async () => await TraktWatched(movie.PlexRatingKey, movie.Title, movie.Year ?? 0, movie.IMDB)" href="javascript:void(0);">Mark Unwatched in Trakt</a>
+                                    }
+                                    else
+                                    {
+                                        <label class="form-check-label text-success">
+                                            <span>Watched In Trakt</span>
+                                        </label>
+                                    }
+                                }
+                                else
+                                {
+                                    if (hasImdb)
+                                    {
+                                        <a class="form-check-label text-danger" @onclick="async () => await TraktWatched(movie.PlexRatingKey, movie.Title, movie.Year ?? 0, movie.IMDB, true)" href="javascript:void(0);"> Mark Watched in Trakt</a>
+                                    }
+                                    else
+                                    {
+                                        <label class="form-check-label text-danger">
+                                            <span>Not Watched In Trakt</span>
+                                        </label>
+                                    }
+                                }
+                            }
+                        </Template>
+                    </GridColumn>
+
+                </GridColumns>
+            </SfGrid>
+        }
+    </ContentTemplate>
+</TabItem>
+<TabItem>
+    <ChildContent>
+        <TabHeader Text="Trakt Lists Compare"></TabHeader>
+    </ChildContent>
+    <ContentTemplate>
+        <div class="col-lg-12">
+            <div class="content-wrapper">
+                <div class="row">
+                    <SfTextBox Placeholder="URL" FloatLabelType="@FloatLabelType.Auto" @bind-Value="@TraktUrl"></SfTextBox>
+                    <SfButton CssClass="e-success" @onclick="async () => await AddUrlToList()">Add Url</SfButton>
+                    <SfListBox TValue="string[]" TItem="string" DataSource="@UriList" @ref="@_urlBox">
+                        <ListBoxSelectionSettings ShowCheckbox="true" ShowSelectAll="true"></ListBoxSelectionSettings>
+                    </SfListBox>
+                    <SfButton IsPrimary="true" @onclick="async () => await GetTraktListDataCompareData()">Compare Selected Lists</SfButton>
+
+                    @if (MoviesListCompare != null && MoviesListCompare.Any())
+                    {
+                        <SfGrid DataSource="@MoviesListCompare" AllowSelection="false" AllowSorting="true" AllowFiltering="true" AllowGrouping="true" AllowPaging="true">
+                            <GridPageSettings PageSize="25" PageSizes="true"></GridPageSettings>
+                            <GridFilterSettings Type="@FilterType.Menu"></GridFilterSettings>
+                            <GridColumns>
+                                <GridColumn Field=@nameof(MovieDto.Title) HeaderText="Title"></GridColumn>
+                                <GridColumn Field=@nameof(MovieDto.Year) HeaderText="Year"></GridColumn>
+                                <GridColumn Field=@nameof(MovieDto.PlexHas) HeaderText="In Library" Filter="@(new {type = "CheckBox"})" Width="150">
+                                    <Template>
+                                        @{
+                                            if (context is MovieDto movie && movie.PlexHas)
+                                            {
+                                                <span class="badge badge-success">Yes</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge badge-danger">No</span>
+                                            }
+                                        }
+                                    </Template>
+                                </GridColumn>
+                                <GridColumn Field=@nameof(MovieDto.PlexHas) HeaderText="Plex Watched" Filter="@(new {type = "CheckBox"})" Width="150">
+                                    <Template>
+                                        @{
+                                            if (context is MovieDto movie && movie.PlexWatched)
+                                            {
+                                                <span class="badge badge-success">Yes</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge badge-danger">No</span>
+                                            }
+                                        }
+                                    </Template>
+                                </GridColumn>
+                            </GridColumns>
+                        </SfGrid>
+                    }
+                </div>
+            </div>
+        </div>
+    </ContentTemplate>
+</TabItem>
+</TabItems>
+</SfTab>
+
+<SfToast @ref="@_toastObj">
+    <ToastPosition X="Right"></ToastPosition>
+</SfToast>
 
 @functions {
 
@@ -338,57 +263,87 @@ else
     [Parameter]
     public string LibraryKey { get; set; }
 
-    private PlexMediaContainer Data { get; set; }
-    private List<MovieDto> MoviesWatchedCompare { get; set; }
-    private List<MovieDto> MoviesListCompare { get; set; }
+    private PlexMediaContainer PlexLibraryInfo { get; set; }
+    private List<MovieDto> MoviesWatchedCompare = new List<MovieDto>();
+    private List<MovieDto> MoviesListCompare = new List<MovieDto>();
+    List<ITraktWatchedMovie> TraktWatchedMovies { get; set; }
     private string PlexKey { get; set; }
     private string ServerUrl { get; set; }
     private string TraktKey { get; set; }
     private int NotMarkedPlex { get; set; }
     private int NotMarkedTrakt { get; set; }
-    private string TraktListUser { get; set; }
-    private string TraktListName { get; set; }
 
-    DxDataGrid<MovieDto> _gridRef;
-    DxDataGrid<MovieDto> _gridRef2;
-    private bool _loadDone;
+    private readonly string[] UriList = {};
+    private string TraktUrl { get; set; }
 
-    int _activeTabIndex;
+    SfListBox<string[], string> _urlBox;
+    SfToast _toastObj;
 
-    int ActiveTabIndex
-    {
-        get => _activeTabIndex;
-        set
-        {
-            _activeTabIndex = value;
-            InvokeAsync(StateHasChanged);
-        }
-    }
 
     protected override async Task OnInitializedAsync()
     {
         PlexKey = await ProtectedLocalStore.GetAsync<string>("PlexKey");
         TraktKey = await ProtectedLocalStore.GetAsync<string>("TraktKey");
+
+        var servers = await PlexClient.GetResources(PlexKey);
+        ServerUrl = (servers.SingleOrDefault(x => x.ClientIdentifier == Server)?.Connections ??
+                     throw new InvalidOperationException()).FirstOrDefault(y => y.Protocol == "https" && y.Local == "0")
+            ?.Uri;
+
+        await GetLibraryInfo();
+        TraktWatchedMovies = await GetTraktWatchedMovies();
         await GetMoviesWatchedCompareData();
-        //await GetTraktListDataCompareData();
-        _loadDone = true;
+    }
+
+    private async Task AddUrlToList()
+    {
+        if (TraktUrl.IsNullOrEmpty()) return;
+
+        await _urlBox.RemoveItems(TraktUrl);
+        await _urlBox.AddItems(TraktUrl);
+        TraktUrl = string.Empty;
     }
 
     private async Task GetTraktListDataCompareData()
     {
-        if (TraktListName.IsNullOrEmpty() || TraktListUser.IsNullOrEmpty())
+        var urls = _urlBox.Value?.ToList();
+        var traktListFields = new List<TraktListFields>();
+
+        if (urls == null)
         {
-            MoviesListCompare = null;
             
-            NotificationService.Notify(new NotificationMessage
+            await _toastObj.Show(new ToastModel
             {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = "Username or List Is Empty!",
-                Duration = 10000
+                Title = "Warning!",
+                Content = "No list to check.",
+                CssClass = "e-toast-warning",
+                Icon = "e-danger toast-icons",
+                TimeOut = 5000
             });
         }
-        
+
+        if (urls != null)
+            foreach (var url in urls)
+            {
+                var userLists = TraktHelpers.TraktListUriParse(url);
+
+                if (userLists == null || userLists.Username.IsNullOrEmpty() || userLists.ListName.IsNullOrEmpty())
+                {
+                    MoviesListCompare = new List<MovieDto>();
+
+                    await _toastObj.Show(new ToastModel
+                    {
+                        Title = "Error!",
+                        Content = $"Can not parse user name or list from uri {url}",
+                        CssClass = "e-toast-danger",
+                        Icon = "e-danger toast-icons",
+                        TimeOut = 15000
+                    });
+                }
+
+                if (userLists != null) traktListFields.Add(new TraktListFields {Username = userLists.Username, ListName = userLists.ListName});
+            }
+
         var clientId = Configuration["Trakt:ClientId"];
         var clientSecret = Configuration["Trakt:ClientSecret"];
         var traktClient = new TraktClient(clientId, clientSecret)
@@ -396,62 +351,57 @@ else
             Authorization = TraktAuthorization.CreateWith(TraktKey)
         };
 
-        var items = await traktClient.Users.GetCustomListItemsAsync(TraktListUser, TraktListName);
+        var items = new List<TraktPagedResponse<ITraktListItem>>();
+        foreach (var list in traktListFields)
+        {
+            items.AddRange(await traktClient.Users.GetCustomListItemsAsync(list.Username, list.ListName));
+        }
 
         MoviesListCompare = new List<MovieDto>();
-        var plexMovies = Data.MediaContainer.Metadata;
 
-        foreach (var traktListItem in items.Value)
+        var plexMovies = PlexLibraryInfo.MediaContainer.Metadata;
+
+        foreach (var traktPagedResponse in items)
         {
-            if (traktListItem.Type == TraktListItemType.Movie)
+            foreach (var traktListItem in traktPagedResponse.Value)
             {
-                var plexHas = PlexHasItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
-                var plexWatched = PlexWatchedItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
-                MoviesListCompare.Add(new MovieDto
+                if (traktListItem.Type == TraktListItemType.Movie)
                 {
-                    Title = traktListItem.Movie.Title,
-                    Description = plexHas != null ? plexHas.Summary : traktListItem.Movie.Overview,
-                    TraktHas = true,
-                    Year = traktListItem.Movie.Year,
-                    IMDB = traktListItem.Movie.Ids.Imdb,
-                    PlexHas = plexHas != null,
-                    PlexWatched = plexWatched != null,
-                    Duration = plexHas != null
-                        ? (plexHas.Duration / 1000).ToString()
-                        : (traktListItem.Movie.Runtime ?? 0 * 60).ToString(),
-                    Rating = plexHas != null ? plexHas.ContentRating : traktListItem.Movie.Certification,
-                    PlexRatingKey = plexHas != null ? plexHas.RatingKey : string.Empty,
-                    Art = plexHas != null ? ServerUrl + plexHas.Thumb + "?X-Plex-Token=" + PlexKey : string.Empty,
-                });
+                    var plexHas = PlexHelpers.PlexHasItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
+                    var plexWatched = PlexHelpers.PlexWatchedItem(plexMovies, traktListItem.Movie.Title, traktListItem.Movie.Ids.Imdb, traktListItem.Movie.Year ?? 0);
+                    MoviesListCompare.Add(new MovieDto
+                    {
+                        Title = traktListItem.Movie.Title,
+                        Description = plexHas != null ? plexHas.Summary : traktListItem.Movie.Overview,
+                        TraktHas = true,
+                        Year = traktListItem.Movie.Year,
+                        IMDB = traktListItem.Movie.Ids.Imdb,
+                        PlexHas = plexHas != null,
+                        PlexWatched = plexWatched != null,
+                        Duration = plexHas != null
+                            ? (plexHas.Duration / 1000).ToString()
+                            : (traktListItem.Movie.Runtime ?? 0 * 60).ToString(),
+                        Rating = plexHas != null ? plexHas.ContentRating : traktListItem.Movie.Certification,
+                        PlexRatingKey = plexHas != null ? plexHas.RatingKey : string.Empty,
+                        Art = plexHas != null ? ServerUrl + plexHas.Thumb + "?X-Plex-Token=" + PlexKey : string.Empty
+                    });
+                }
             }
         }
+
+        MoviesListCompare = MoviesListCompare.DistinctBy(x => x.IMDB).ToList();
     }
 
     private async Task GetMoviesWatchedCompareData()
     {
         MoviesWatchedCompare = new List<MovieDto>();
 
-        var servers = await PlexClient.GetResources(PlexKey);
-        ServerUrl = (servers.SingleOrDefault(x => x.ClientIdentifier == Server)?.Connections ??
-                     throw new InvalidOperationException()).FirstOrDefault(y => y.Protocol == "https" && y.Local == "0")
-            ?.Uri;
-        Data = await PlexClient.GetMetadataForLibrary(PlexKey, ServerUrl, LibraryKey);
+        var plexMovies = PlexLibraryInfo.MediaContainer.Metadata;
 
-        var clientId = Configuration["Trakt:ClientId"];
-        var clientSecret = Configuration["Trakt:ClientSecret"];
-        var traktClient = new TraktClient(clientId, clientSecret)
+        foreach (var traktWatchedMovie in TraktWatchedMovies)
         {
-            Authorization = TraktAuthorization.CreateWith(TraktKey)
-        };
-
-        var traktWatchedMovies =
-            (await traktClient.Sync.GetWatchedMoviesAsync(new TraktExtendedInfo().SetFull())).ToList();
-        var plexMovies = Data.MediaContainer.Metadata;
-
-        foreach (var traktWatchedMovie in traktWatchedMovies)
-        {
-            var plexHasItem = PlexHasItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
-            var plexWatchedItem = PlexWatchedItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
+            var plexHasItem = PlexHelpers.PlexHasItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
+            var plexWatchedItem = PlexHelpers.PlexWatchedItem(plexMovies, traktWatchedMovie.Title, traktWatchedMovie.Ids.Imdb, traktWatchedMovie.Year ?? 0);
 
             if (plexHasItem != null)
             {
@@ -497,36 +447,24 @@ else
         }
 
         UpdateNotMarked();
-
-    //await _gridRef.Refresh();
     }
 
-    private static Metadata PlexHasItem(List<Metadata> plexMovies, string title, string imdb, int year)
+    protected async Task<List<ITraktWatchedMovie>> GetTraktWatchedMovies()
     {
-        var plexHasItem = plexMovies.SingleOrDefault(x =>
-            x.Title == title && x.ExternalProvider.ToUpper() == "IMDB" &&
-            x.ExternalProviderId == imdb);
-        if (plexHasItem == null)
-            plexHasItem =
-                plexMovies.SingleOrDefault(x => x.Title == title && x.Year == year);
-        if (plexHasItem == null)
-            plexHasItem = plexMovies.SingleOrDefault(x =>
-                x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == imdb);
-        return plexHasItem;
+        var clientId = Configuration["Trakt:ClientId"];
+        var clientSecret = Configuration["Trakt:ClientSecret"];
+        var traktClient = new TraktClient(clientId, clientSecret)
+        {
+            Authorization = TraktAuthorization.CreateWith(TraktKey)
+        };
+
+        var data = (await traktClient.Sync.GetWatchedMoviesAsync(new TraktExtendedInfo().SetFull())).ToList();
+        return data;
     }
 
-    private static Metadata PlexWatchedItem(List<Metadata> plexMovies, string title, string imdb, int year)
+    private async Task GetLibraryInfo()
     {
-        var plexHasItem = plexMovies.SingleOrDefault(x =>
-            x.Title == title && x.ExternalProvider.ToUpper() == "IMDB" &&
-            x.ExternalProviderId == imdb && x.ViewCount > 0);
-        if (plexHasItem == null)
-            plexHasItem =
-                plexMovies.SingleOrDefault(x => x.Title == title && x.Year == year && x.ViewCount > 0);
-        if (plexHasItem == null)
-            plexHasItem = plexMovies.SingleOrDefault(x =>
-                x.ExternalProvider.ToUpper() == "IMDB" && x.ExternalProviderId == imdb && x.ViewCount > 0);
-        return plexHasItem;
+        PlexLibraryInfo = await PlexClient.GetMetadataForLibrary(PlexKey, ServerUrl, LibraryKey);
     }
 
     private void UpdateNotMarked()
@@ -535,7 +473,7 @@ else
         NotMarkedPlex = (MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas)).ToInt32() < 0 ? 0 : (MoviesWatchedCompare.Count(x => x.TraktWatched && x.PlexHas) - MoviesWatchedCompare.Count(x => x.PlexWatched && x.PlexHas)).ToInt32();
     }
 
-    private async Task PlexWatched(MovieDto movie, bool markWatched = false)
+    private async Task PlexWatched(string key, string title, bool markWatched = false)
     {
         var watched = markWatched ? "watched" : "unwatched";
 
@@ -543,39 +481,40 @@ else
         {
             if (markWatched)
             {
-                await PlexClient.ScrobbleItem(PlexKey, ServerUrl, movie.PlexRatingKey);
+                await PlexClient.ScrobbleItem(PlexKey, ServerUrl, key);
             }
             else
             {
-                await PlexClient.UnScrobbleItem(PlexKey, ServerUrl, movie.PlexRatingKey);
+                await PlexClient.UnScrobbleItem(PlexKey, ServerUrl, key);
             }
 
-            NotificationService.Notify(new NotificationMessage
+            await _toastObj.Show(new ToastModel
             {
-                Severity = NotificationSeverity.Success,
-                Summary = "Success",
-                Detail = $"An tem with the title of '{movie.Title}' has been marked {watched} successfully in plex!",
-                Duration = 5000
+                Title = "Success!",
+                Content = $"An tem with the title of '{title}' has been marked {watched} successfully in plex!",
+                CssClass = "e-toast-success",
+                Icon = "e-success toast-icons",
+                TimeOut = 5000
             });
 
-            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).PlexWatched = markWatched;
+            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == key).PlexWatched = markWatched;
 
-            await _gridRef.Refresh();
             UpdateNotMarked();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
+            await _toastObj.Show(new ToastModel
             {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"An tem with the title of '{movie.Title}' had an error {ex.Message}!",
-                Duration = 10000
+                Title = "Error!",
+                Content = $"An tem with the title of '{title}' had an error {ex.Message}!",
+                CssClass = "e-toast-danger",
+                Icon = "e-danger toast-icons",
+                TimeOut = 15000
             });
         }
     }
 
-    private async Task TraktWatched(MovieDto movie, bool markWatched = false)
+    private async Task TraktWatched(string key, string title, int year, string imdb, bool markWatched = false)
     {
         var watched = markWatched ? "watched" : "unwatched";
 
@@ -594,11 +533,11 @@ else
 
                 traktSyncHistoryPostMovies.AddMovie(new TraktMovie
                 {
-                    Title = movie.Title
-                    , Year = movie.Year
+                    Title = title
+                    , Year = year
                     , Ids = new TraktMovieIds
                     {
-                        Imdb = movie.IMDB
+                        Imdb = imdb
                     }
                 }, DateTime.UtcNow);
 
@@ -611,11 +550,11 @@ else
 
                 traktSyncHistoryPostMovies.AddMovie(new TraktMovie
                 {
-                    Title = movie.Title
-                    , Year = movie.Year
+                    Title = title
+                    , Year = year
                     , Ids = new TraktMovieIds
                     {
-                        Imdb = movie.IMDB
+                        Imdb = imdb
                     }
                 });
 
@@ -623,27 +562,28 @@ else
                 await traktClient.Sync.RemoveWatchedHistoryItemsAsync(payload);
             }
 
-            NotificationService.Notify(new NotificationMessage
+            await _toastObj.Show(new ToastModel
             {
-                Severity = NotificationSeverity.Success,
-                Summary = "Success",
-                Detail = $"An tem with the title of '{movie.Title}' has been marked {watched} successfully in Trakt!",
-                Duration = 5000
+                Title = "Success!",
+                Content = $"An tem with the title of '{title}' has been marked {watched} successfully in Trakt!",
+                CssClass = "e-toast-success",
+                Icon = "e-success toast-icons",
+                TimeOut = 5000
             });
 
-            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == movie.PlexRatingKey).TraktWatched = markWatched;
+            MoviesWatchedCompare.SingleOrDefault(x => x.PlexRatingKey == key).TraktWatched = markWatched;
 
-            await _gridRef.Refresh();
             UpdateNotMarked();
         }
         catch (Exception ex)
         {
-            NotificationService.Notify(new NotificationMessage
+            await _toastObj.Show(new ToastModel
             {
-                Severity = NotificationSeverity.Error,
-                Summary = "Error",
-                Detail = $"An tem with the title of '{movie.Title}' had an error {ex.Message}!",
-                Duration = 10000
+                Title = "Error!",
+                Content = $"An tem with the title of '{title}' had an error {ex.Message}!",
+                CssClass = "e-toast-danger",
+                Icon = "e-danger toast-icons",
+                TimeOut = 15000
             });
         }
     }
